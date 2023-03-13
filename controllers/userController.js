@@ -3,6 +3,34 @@ const validator = require("validator");
 const bcrypt = require("bcrypt");
 const sendMail = require("../utils/email");
 const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
+
+// to create a jwt token we should split the process into 2 part
+// 1: create a function that will sign a token
+// to sign a token, we should provide 3 main factors:
+  // Factor 1: A unique field from the user: we choose always the id
+  // Factor 2: JWT_SECRET
+  // Factor 3: JWT_EXPIRES-IN
+
+const signToken = (id) =>{
+  return jwt.sign({id},process.env.JWT_SECRET,{
+    expiresIn: process.env.JWT_EXPIRES_IN,
+  });
+};
+
+// 2: CREATE the function that will sent the token to the user
+const creatSendToken = (user,statusCode,res, msg) => {
+  const token = signToken(user._id);
+
+  res.status(statusCode).json({
+    status: "success",
+    msg,
+    token,
+    data: {
+      user,
+    },
+  });
+};
 exports.signUp = async (req, res) => {
   try {
     //1- check if the email entered is valid
@@ -32,9 +60,16 @@ exports.signUp = async (req, res) => {
       email: req.body.email,
       password: req.body.password,
     });
-    return res
-      .status(201)
-      .json({ message: "User created successfully", data: { newUser } });
+
+    // return res
+    //   .status(201)
+    //   .json({ message: "User created successfully", data: { newUser } });
+
+    // with token we replace the code above  with this code below
+
+    let msg = "User created successfully.";
+    creatSendToken(newUser,201,res,msg);
+
     // if everything is ok , we created the new user
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -53,7 +88,11 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "incorrect email or password" });
     }
     //3: if everything is ok, log the user in
-    return res.status(200).json({ message: "you are logged in successfully" });
+
+    let msg = "you are logged in successfully";
+    creatSendToken(user,200,res,msg);
+
+    //return res.status(200).json({ message: "you are logged in successfully" });
   } catch (err) {
     console.log(err);
   }
@@ -148,3 +187,24 @@ exports.resetPassword = async (req, res) => {
     console.log(err);
   }
 };
+
+exports.protect = async (req,res,next) => {
+  try {
+    // 1: check if the token owner still exist
+    let token;
+    if(req.headers.authorization && 
+      req.headers.authorization.startWith("Bearer")
+      ){
+        token = req.headers.authorization.split(" ")[1];
+      }
+    // 2: verify the token
+
+    // 3: check if the token owner exist
+
+    // 4: check if thw owner changed the password after the token was created
+
+    // 5: if everything is ok: add the user to all the requests (req.user = currentUser)
+  } catch (err) {
+    console.log(err);
+  }
+}
