@@ -58,18 +58,30 @@ userSchema.methods.checkPassword = async function (
 };
 
 // this function will create a random reset token
-userSchema.methods.generatePasswordResetToken = function(){
+userSchema.methods.generatePasswordResetToken = function () {
   const resetToken = crypto.randomBytes(32).toString("hex"); // will be sent via email
 
   // saved in the DB in a hashed way
   this.passwordResetToken = crypto
-  .createHash("sha256")
-  .update(resetToken)
-  .digest("hex");
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
 
   // 10 min of validity
   this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
 
   return resetToken;
-}
+};
+
+// this function will check if the password was changed after issuing the jwt token
+userSchema.methods.passwordChangedAfterTokenIssued = function (JWTTimestamp) {
+  if (this.passwordChangeAt) {
+    const passwordChangeTime = parseInt(
+      this.passwordChangeAt.getTime() / 1000,
+      10
+    );
+    return passwordChangeTime > JWTTimestamp;
+  }
+  return false;
+};
 module.exports = mongoose.model("User", userSchema);

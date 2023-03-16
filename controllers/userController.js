@@ -4,22 +4,23 @@ const bcrypt = require("bcrypt");
 const sendMail = require("../utils/email");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
+const { promisify } = require("util"); // bte5oud ayya function ma btechte8el ma3 l async/ await aw ma btredd promise kermel t5alliha tredd promise
 
 // to create a jwt token we should split the process into 2 part
 // 1: create a function that will sign a token
 // to sign a token, we should provide 3 main factors:
-  // Factor 1: A unique field from the user: we choose always the id
-  // Factor 2: JWT_SECRET
-  // Factor 3: JWT_EXPIRES-IN
+// Factor 1: A unique field from the user: we choose always the id
+// Factor 2: JWT_SECRET
+// Factor 3: JWT_EXPIRES-IN
 
-const signToken = (id) =>{
-  return jwt.sign({id},process.env.JWT_SECRET,{
+const signToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN,
   });
 };
 
 // 2: CREATE the function that will sent the token to the user
-const creatSendToken = (user,statusCode,res, msg) => {
+const creatSendToken = (user, statusCode, res, msg) => {
   const token = signToken(user._id);
 
   res.status(statusCode).json({
@@ -68,7 +69,7 @@ exports.signUp = async (req, res) => {
     // with token we replace the code above  with this code below
 
     let msg = "User created successfully.";
-    creatSendToken(newUser,201,res,msg);
+    creatSendToken(newUser, 201, res, msg);
 
     // if everything is ok , we created the new user
   } catch (err) {
@@ -90,7 +91,7 @@ exports.login = async (req, res) => {
     //3: if everything is ok, log the user in
 
     let msg = "you are logged in successfully";
-    creatSendToken(user,200,res,msg);
+    creatSendToken(user, 200, res, msg);
 
     //return res.status(200).json({ message: "you are logged in successfully" });
   } catch (err) {
@@ -188,23 +189,55 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
-exports.protect = async (req,res,next) => {
+exports.protect = async (req, res, next) => {
   try {
     // 1: check if the token owner still exist
     let token;
-    if(req.headers.authorization && 
-      req.headers.authorization.startWith("Bearer")
-      ){
-        token = req.headers.authorization.split(" ")[1];
-      }
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer")
+    ) {
+      token = req.headers.authorization.split(" ")[1];
+    }
+
+    if (!token) {
+      return res
+        .status(401)
+        .json({ message: "you are not logged in. Please login to get access" });
+    }
     // 2: verify the token
-
+    let decoded;
+    try {
+      decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
+    } catch (err) {
+      if (err.name === "JsonWebTokenError") {
+        return res.status(401).json({ message: "invalid token, login again" });
+      } else if (err.name === "TokenExpiredError") {
+        return res.status(401).json({
+          message: "your session token has expired !! please login again",
+        });
+      }
+    }
     // 3: check if the token owner exist
-
-    // 4: check if thw owner changed the password after the token was created
+    const currentUser = await User.findById(decoded.id);
+    if (!currentUser) {
+      return res.status(401).json({
+        message: "the user belonging to this session does not longer exist",
+      });
+    }
+    // 4: check if the owner changed the password after the token was created
+    // iat: the time where the token was issued
+    // exp: the time where the token will be expired
+    if (currentUser.passwordChangedAfterTokenIssued(decoded.iat)) {
+      return res.status(401).json({
+        message: "your password has been changed!! please login again",
+      });
+    }
 
     // 5: if everything is ok: add the user to all the requests (req.user = currentUser)
+    req.user = currentUser;
+    next();
   } catch (err) {
     console.log(err);
   }
-}
+};
